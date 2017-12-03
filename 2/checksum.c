@@ -61,6 +61,49 @@ bool get_line_diff(FILE* file, int* oDiff) {
 
 	return true;
 }
+
+bool get_line_division(FILE* file, int* oDiv) {
+	size_t len = 0;
+	char* ptr;
+	char buf[4096];
+	int cur;
+	if ((ptr = fgetln(file, &len)) == NULL) {
+		return false;
+	}
+
+	memcpy(buf, ptr, len);
+	ptr = buf;
+	buf[len] = '\0';
+
+	int nums[64] = {0};
+	int *curnums = nums;
+	size_t nums_len = 0;
+	
+	while (sscanf(ptr, "%d", &cur) == 1) {
+		printf("%d ", cur);
+		*curnums++ = cur;
+		nums_len++;
+		
+		ptr++;
+		int num_digits = (int)ceil(log10(cur));
+		while(num_digits-- > 0)ptr++;
+	}
+
+	for(int i = 0; i < nums_len - 1; i++) {
+		for (int j = i + 1; j < nums_len; j++) {
+			int min = nums[i]<nums[j]?nums[i]:nums[j];
+			int max = nums[i]<nums[j]?nums[j]:nums[i];
+			if (max % min == 0) {
+				*oDiv = max / min;
+				printf("max: %d, min: %d, div=%d\n", max, min, *oDiv);
+				return true;
+			}
+		}
+	}
+	
+	return false;
+}
+
 int main(int argc, const char** argv) {
 	int diff = 0;
 	long result = 0;
@@ -71,7 +114,15 @@ int main(int argc, const char** argv) {
 		result += diff;
 	}
 	fclose(file);
-	
+	printf("%ld\n", result);	
+
+
+	result = 0;
+	file = fopen("spreadsheet.txt", "r");
+	while(get_line_division(file, &diff)) {
+		result += diff;
+	}
+	fclose(file);
 	printf("%ld\n", result);
 	
 	return 0;
