@@ -35,13 +35,28 @@ const char* input = "52288333363558485499154593667379825983129595838174556215459
 int main(int argc, const char** argv) {
   size_t result = 0;
 	size_t len = strlen(input);
-	for( size_t i = 0; i < len - 1; i++) {
-    if (input[i] == input[i+1]) {
-      result += (size_t)(input[i] - '0');
-    }
-  }
-	if (input[len-1] == input[0]) result += (size_t)(input[0] - '0');
-	
+
+	size_t offset = 1;
+	/* Part 1 */
+	for (size_t i = 0; i < len; i++) {
+		size_t j = (i + offset) % len;
+		if (input[i] == input[j]) {
+			result += (size_t)(input[j] - '0');
+		}
+	}
 	printf("%lu\n", result);
+
+	
+	/* Part 2 */
+	result = 0;
+	offset = len / 2;
+	for (size_t i = 0; i < len; i++) {
+		size_t j = (i + offset) % len;
+		if (input[i] == input[j]) {
+			result += (size_t)(input[j] - '0');
+		}
+	}
+	printf("%lu\n", result);	
+	
 	return 0;
 }
