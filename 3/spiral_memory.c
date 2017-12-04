@@ -35,8 +35,8 @@ squares would receive the following values:
 
 int main(int argc, const char** argv) {
 	int target = 265149;
-	//int dim = 515; // ceiling of the sqrt of target
-	int dim = 515;
+	int dim = 515; // ceiling of the sqrt of target
+	/*int dim = 5;*/
 
 	int *buf = (int*)malloc(sizeof(int) * dim * dim);
 	bzero(buf, sizeof(int) * dim * dim);
@@ -44,6 +44,8 @@ int main(int argc, const char** argv) {
 	int x, y;
 
 	x = y = (int)ceil(dim / 2);
+	buf[x + y*dim] = 1;
+	
 	int xvel = 0, yvel = 1;
 
 	int num = 1;
@@ -51,8 +53,23 @@ int main(int argc, const char** argv) {
 	while (num <= dim) {
 		for (int i = 0; i < 2; i++) {
 			for (int j = 0; j < num; j++) {
-				if(x < dim && y < dim)
-					buf[x + dim*y] = val++;
+				if(x >= 0 && y >= 0 && x < dim && y < dim) {
+					for (int k = -1; k <= 1; k++) {
+						for (int l = -1; l <= 1; l++) {
+							if (k == 0 && l == 0) continue;
+							if (x + k >= 0 && x + k < dim &&
+									y + l >= 0 && y + l < dim) {
+								buf[x + dim*y] += buf[(x + k) + (y + l)*dim];
+							}
+						}
+					}
+					if(buf[x + dim*y] >= target) {
+						printf("%d\n", buf[x + dim*y]);
+						return 0;
+					}
+			  }
+				
+				val++;
 				x+=xvel;
 				y+=yvel;
 			}
