@@ -36,6 +36,7 @@ int main(int argc, const char** argv) {
 		while(!lineStream.eof()) {
 			std::string cur_word;
 			lineStream >> cur_word;
+			std::sort(cur_word.begin(), cur_word.end());
 			if (words.find(cur_word) == words.end()) {
 				words.insert(cur_word);
 			}
