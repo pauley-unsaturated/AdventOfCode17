@@ -69,9 +69,14 @@ static size_t do_jumps(size_t len, int* vec) {
 		*/
 		
 		int off = *cur;
-		(*cur)++;
+		/* Part 2 changes the rules: offsets >= 3 get a decrement */
+		if (off >= 3) {
+			(*cur)--;
+		}
+		else {
+			(*cur)++;
+		}
 		cur += off;
-
 	}
 	return result;
 }
