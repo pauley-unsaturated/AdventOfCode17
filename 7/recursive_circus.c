@@ -77,9 +77,10 @@ typedef struct {
 	unsigned long name_hash;
 	char name[16];
 	int weight;
+	int sum_weights;
 	int parent_idx;
 	int num_children;
-	int child_idxs[13];
+	int child_idxs[12];
 } Node;
 
 #define NUM_NODES 4096
@@ -87,6 +88,12 @@ typedef struct {
 Node node_table[NUM_NODES] = {0};
 
 int node_table_len = 0;
+
+Node* node_for_idx(int idx) {
+	assert(idx >= 0);
+	assert(idx < node_table_len);
+	return &node_table[idx];
+}
 
 unsigned long hash(const char *str) {
 	unsigned long hash = 5381;
@@ -136,6 +143,7 @@ bool load_node(FILE* file, Node* oNode) {
 	oNode->name_hash = hash(oNode->name);
 	oNode->num_children = 0;
 	oNode->parent_idx = -1;
+	oNode->sum_weights = 0;
 	
 	/* Parse the weight */
 	c+=2;
@@ -192,9 +200,9 @@ bool connect_node(FILE* file, Node* node) {
 				Node* child = &node_table[child_idx];
 				assert(child->parent_idx == -1);
 				child->parent_idx = node - node_table;
-				assert(node->num_children < 13);
+				assert(node->num_children < (int)(sizeof node->child_idxs / sizeof(int)));
 				node->child_idxs[node->num_children++] = child_idx;
-
+				
 				children_start = child_end + 1;
 			}
 		}
@@ -207,11 +215,8 @@ void connect_nodes() {
 	FILE* input = fopen("input.txt", "r");
 
 	Node* cur_node = node_table;
-	int i = 0;
-	printf("connecting %p\n", cur_node);
 	while(connect_node(input, cur_node)) {
 		cur_node++;
-		printf("connecting %p\n", cur_node);
 	}
 	
 	fclose(input);
@@ -231,7 +236,50 @@ char* node_name(int node_idx) {
 	Node* node = &node_table[node_idx];
 	return node->name;
 }
-	
+
+void calculate_weight(Node* node) {
+	node->sum_weights = node->weight;
+	for (int i = 0; i < node->num_children; i++) {
+		Node* child = &node_table[node->child_idxs[i]];
+		calculate_weight(child);
+		node->sum_weights += child->sum_weights;
+	}	
+}
+
+bool node_is_balanced(Node* node) {
+	if (node->num_children == 0) return true;
+	/* TAKE THE FIRST BORN */
+	int first_child = node_for_idx(node->child_idxs[0])->sum_weights;
+	for (int i = 1; i < node->num_children; i++) {
+		if (first_child != node_for_idx(node->child_idxs[i])->sum_weights)
+			return false;
+	}
+	return true;
+}
+
+Node* find_imbalanced(Node* node) {
+	/* Assume that at most one of the nodes is different
+	 * 
+	 */
+	if(!node_is_balanced(node)) {
+		for (int i = 0; i < node->num_children; i++) {
+			Node* child = node_for_idx(node->child_idxs[i]);
+			if (!node_is_balanced(child)) return child;
+		}
+		return node;
+	}
+	return NULL;
+}
+
+
+void dump_tree(Node* node, int depth) {
+	for (int i = 0; i < depth; i++) printf("\t");
+	printf("%s (%d):(%d)\n", node->name, node->sum_weights, node->weight);
+	for (int i = 0; i < node->num_children; i++) {
+		Node* child = node_for_idx(node->child_idxs[i]);
+		dump_tree(child, depth + 1);
+	}
+}
 
 int main(int argc, const char **argv) {
 	printf("Loading nodes...\n");
@@ -240,8 +288,29 @@ int main(int argc, const char **argv) {
 	printf("Connecting nodes\n");
 	connect_nodes();
 
-	char* root_name = node_name(find_root());
+	Node *root_node = &node_table[find_root()];
+	assert(root_node);
+	
+	char *root_name = root_node->name;
 	printf("Root = %s\n", root_name);
+
+	calculate_weight(root_node);
+
+	dump_tree(root_node, 0);
+	
+	Node* imbalanced = find_imbalanced(root_node);
+	printf("Imbalanced = %s\n", imbalanced->name);
+	for (int i = 0; i < imbalanced->num_children; i++) {
+		Node *child = node_for_idx(imbalanced->child_idxs[i]);
+		/* I'm going to cheap out here and do the balancing manually.
+		 * This could be automated, but the code would be a bit nasty.
+		 * Basically use a frequency list to determine the outlier,
+		 * then for the outlier, determine which of it's children needs to have the
+		 * weight changed, and by how much (again, by finding the outlier).
+		 */
+		dump_tree(child, 1);
+	}
+
 	
 	return 0;
 }
