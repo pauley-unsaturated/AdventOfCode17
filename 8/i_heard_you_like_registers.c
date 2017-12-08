@@ -38,6 +38,7 @@ your puzzle input?
 #include <string.h>
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 
 typedef struct _Register {
 	unsigned long hash;
@@ -229,19 +230,7 @@ void dump_registers() {
 	printf("\n");
 }
 
-int main(int argc, const char** argv) {
-	FILE* input = fopen("input.txt", "r");
-	
-	load_instructions(input);
-	// could probably do the instructions during the load
-	Instruction* cur = instructions;
-	while(cur->target) {
-		do_instruction(cur);
-		cur++;
-	}
-
-	dump_registers();
-
+long int max_val() {
 	Register* r = registers;
 	long int max_val = r->value;
 	while(r->hash) {
@@ -250,8 +239,28 @@ int main(int argc, const char** argv) {
 		}
 		r++;
 	}
+	return max_val;
+}
 
-	printf("%ld\n", max_val);
+int main(int argc, const char** argv) {
+	FILE* input = fopen("input.txt", "r");
 	
+	load_instructions(input);
+	// could probably do the instructions during the load
+	Instruction* cur = instructions;
+	long int hist_max = LONG_MIN;
+	while(cur->target) {
+		do_instruction(cur);
+		long int now_max = max_val();
+		if (hist_max < now_max) {
+			hist_max = now_max;
+		}
+		cur++;
+	}
+
+	dump_registers();
+
+	printf("Part 1: %ld\n", max_val());
+	printf("Part 2: %ld\n", hist_max);
 	fclose(input);
 }
