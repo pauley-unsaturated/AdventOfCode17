@@ -25,6 +25,7 @@ int main(int argc, const char** argv) {
 	
 	int cur_level = 0;
 	int cur_sum = 0;
+	int num_garbage = 0;
 	bool cancelled = false; 
 	State state = normal;
 
@@ -61,12 +62,16 @@ int main(int argc, const char** argv) {
 			case '!':
 				cancelled = true;
 				break;
+			default:
+				num_garbage++;
+				break;
 			}
 			break;
 		}
 	}
 
 	printf("%d\n", cur_sum);
+	printf("%d\n", num_garbage);
 
 	fclose(input);
 }
