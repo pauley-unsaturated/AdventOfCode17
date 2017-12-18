@@ -10,7 +10,7 @@
 
 #define MODULO 0x7FFFFFFFl
 
-#define NUM_TRIALS 40000000
+#define NUM_TRIALS 5000000
 
 int main(int argc, const char** argv) {
 	int a = 873;
@@ -20,8 +20,14 @@ int main(int argc, const char** argv) {
 	long num_matched = 0;
 
 	while (trials_left-- > 0) {
-		a = (int)((a * A_MULT) % MODULO);
-		b = (int)((b * B_MULT) % MODULO);
+		do {
+			a = (int)((a * A_MULT) % MODULO);
+		} while (a % 4 != 0);
+
+		do {
+			b = (int)((b * B_MULT) % MODULO);
+		} while (b % 8 != 0);
+		
 		if ( (a & 0xFFFF) == (b & 0xFFFF) ) {
 			num_matched++;
 		}
