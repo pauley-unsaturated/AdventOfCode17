@@ -11,7 +11,7 @@ typedef struct node {
 	struct node* next;
 } Node;
 
-#define NUM_NODES 2018
+#define NUM_NODES 50000000
 #define SKIP 328
 Node free_list[NUM_NODES];
 
@@ -20,7 +20,8 @@ int main(int argc, const char** argv) {
 	Node* cur = free_list;
 	cur->next = cur;
 	cur->val = i++;
-
+	Node* zero = cur;
+	
 	while(i < NUM_NODES) {
 		for(int j = 0; j < SKIP; j++) {
 			cur = cur->next;
@@ -32,9 +33,16 @@ int main(int argc, const char** argv) {
 		cur->next = next;
 		cur->val = i;
 		i++;
+		if (i == 2018) {
+				printf("Part 1: %d -> %d\n", cur->val, cur->next->val);
+		}
 	}
 
-	printf("Part 1: %d -> %d\n", cur->val, cur->next->val);
+	printf("Part 2:");
+	fflush(stdout);
+	
+	printf("%d -> %d\n", zero->val, zero->next->val);
+	
 	return 0;
 }
 
