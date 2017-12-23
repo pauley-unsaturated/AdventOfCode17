@@ -10,14 +10,78 @@
 #include <stdlib.h>
 #include <assert.h>
 
-/* I'm going to assume that the register names are a-z, case insensitive */
+
+/* Need to write a circular queue 
+ * for communication between processes
+ */
+typedef int64_t word;
+
+#define QUEUE_SIZE 1024
+typedef struct queue {
+	word buf[QUEUE_SIZE];
+	word* begin;
+	word* end;
+	size_t num_recv;
+} queue;
+
+void queue_init(queue* q) {
+	bzero(q, sizeof(queue));
+	q->begin = q->end = q->buf;
+}
+
+size_t queue_count(queue* q) {
+	if (q->begin <= q->end) {
+		return q->end - q->begin;
+	}
+	else {
+		return ((q->buf + QUEUE_SIZE) - q->begin) + (q->end - q->buf);
+	}
+}
+
+bool queue_enqueue(queue* q, word val) {
+	if (queue_count(q) == QUEUE_SIZE - 1) {
+		return false;
+	}
+	*q->end = val;
+	q->end++;
+	if (q->end - q->buf >= QUEUE_SIZE) {
+		q->end = q->buf;
+	}
+	q->num_recv++;
+	return true;
+}
+
+bool queue_is_empty(queue* q) {
+	return (q->begin == q->end);
+}
+
+bool queue_dequeue(queue* q, word* oVal) {
+	if (queue_is_empty(q)) {
+		return false;
+	}
+	if(oVal) {
+		*oVal = *q->begin;
+	}
+	q->begin++;
+	if (q->begin - q->buf >= QUEUE_SIZE) {
+		q->begin = q->buf;
+	}
+	return true;
+}
+
+typedef enum run_state {
+	CAN_RUN, RUNNING, WAIT_ON_RECV, WAIT_ON_SEND, DEAD
+} run_state;
 
 /* State */
 #define NUM_REGISTERS 26
+/* I'm going to assume that the register names are a-z, case insensitive */
 typedef struct state {
-	long int registers[NUM_REGISTERS];
-	long int cur_sound_freq;
+	run_state run_state;
 	struct instr* cur_instr;
+	queue* out_queue;
+	word registers[NUM_REGISTERS];
+	queue in_queue;
 } state;
 
 /* Values */
@@ -25,21 +89,21 @@ typedef struct value {
 	enum { T_CONST, T_REG } type;
 	union {
 		char reg;
-		long int const_val;
+		word const_val;
 	};
 } value;
 
-static inline long int get_value(state* state, value* val) {
+static inline word get_value(state* state, value* val) {
 	switch(val->type) {
 	case T_CONST:
 		return val->const_val;
 	case T_REG:
 		return state->registers[val->reg - 'a'];
 	}
-	return 0xffffffffdeadbeefL;
+	return 0xffffffffdeadbeefLL;
 }
 
-static inline long int* get_register(state* state, value* val) {
+static inline word* get_register(state* state, value* val) {
 	assert(val->type == T_REG);
 	return &(state->registers[val->reg - 'a']);
 }
@@ -152,24 +216,42 @@ bool parse_instruction(const char* line, instr* oInstr) {
 	return true;
 }
 
-bool do_next_instr(state* cur_state) {
+typedef enum {
+	CONTINUE,
+	YIELD,
+	HALT
+} coroutine_state;
+
+coroutine_state do_next_instr(state* cur_state) {
 	if(cur_state->cur_instr < instructions ||
-		 cur_state->cur_instr - instructions >= num_instructions ) {
-		return false;
+		 (cur_state->cur_instr - instructions) >= num_instructions ) {
+		cur_state->run_state = DEAD;
+		return HALT;
 	}
 	instr* cur = cur_state->cur_instr;
-	long int scratch = 0;
+	word scratch = 0;
 	//printf("%lu: %s\n", cur - instructions, name_for_op(cur->opcode));
 	
 	switch(cur->opcode) {
 		
 	case SND:
-		cur_state->cur_sound_freq = get_value(cur_state, &cur->arg1);
-		break;
-	case RCV:
-		if (get_value(cur_state, &cur->arg1) != 0) {
-			printf("Playing sound at %ld hz\n", cur_state->cur_sound_freq);
+		scratch = get_value(cur_state, &cur->arg1);
+		if(!queue_enqueue(cur_state->out_queue, scratch)) {
+			/* Yield and let the other process drain its queue */
+			cur_state->run_state = WAIT_ON_SEND;
+			return YIELD;
 		}
+		printf("SND %lld\n", scratch);
+		break;
+
+	case RCV:
+		if (!queue_dequeue(&(cur_state->in_queue), &scratch)) {
+			/* Yield and wait for the other process to feed this queue */
+			cur_state->run_state = WAIT_ON_RECV;
+			return YIELD;
+		}
+		printf("RCV %lld\n", scratch);
+		*get_register(cur_state, &cur->arg1) = scratch;
 		break;
 
 	case SET:
@@ -195,7 +277,7 @@ bool do_next_instr(state* cur_state) {
 		break;
 		
 	case JGZ:
-		if (get_value(cur_state, &cur->arg1) > 0) {
+		if (get_value(cur_state, &cur->arg1) > 0LL) {
 			cur_state->cur_instr += (get_value(cur_state, &cur->arg2) - 1);
 		}
 		break;
@@ -232,11 +314,58 @@ int main(int argc, const char** argv) {
 	num_instructions = cur_instr - instructions;
 	
 	// Init the state
-	state cur_state;
-	bzero(&cur_state, sizeof(state));
-	cur_state.cur_instr = instructions;
+	state processes[2];
+	bzero(&processes, sizeof processes);
+	for (int i = 0; i < 2; i++) {
+		processes[i].cur_instr = instructions;
+		processes[i].registers['p' - 'a'] = i;
+		queue_init(&processes[i].in_queue);
+		processes[i].out_queue = &processes[(i + 1) % 2].in_queue;
+		processes[i].run_state = CAN_RUN;
+	}
 
-	while(do_next_instr(&cur_state));
+	int proc_num = 0;
+	coroutine_state result = CONTINUE;
+	
+	for (;;) {
+		state* process = &processes[proc_num];
+		switch (process->run_state) {
+		case WAIT_ON_RECV:
+			if (queue_is_empty(&(process->in_queue))) {
+				// we have a problem: deadlock
+				printf("DEADLOCK! (receive)\n");
+				goto deadlock;
+			}
+			else {
+				process->run_state = CAN_RUN;
+			}
+			break;
+		case WAIT_ON_SEND:
+			if (queue_count(process->out_queue) == (QUEUE_SIZE - 1)) {
+				printf("DEADLOCK! (send)\n");
+				abort();
+			}
+			else {
+				process->run_state = CAN_RUN;
+			}
+			break;
+		default:
+			break;
+		}
+
+		while(process->run_state == CAN_RUN || process->run_state == RUNNING) {
+			process->run_state = RUNNING;
+			printf("%d: %ld\n", proc_num, process->cur_instr - instructions);
+			result = do_next_instr(process);
+		}
+		printf("%d: YIELD (%d)\n", proc_num, process->run_state);
+		proc_num = (proc_num + 1) % 2;
+	}
+
+ deadlock:
+	for (int i = 0; i < 2; i++) {
+		printf("%d sent %ld\n", (i + 1) % 2, processes[i].in_queue.num_recv);
+	}
 	
 	return 0;
 }
