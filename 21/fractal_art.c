@@ -209,7 +209,7 @@ int main(int argc, const char** argv) {
 
 	pixel scratch[FOUR_PATTERN_SIZE];
 	
-	for (int iter = 1; iter <= 5; iter++) {
+	for (int iter = 1; iter <= 18; iter++) {
 		next_dim = new_dim(cur_dim);
 		next_buf = malloc(next_dim * next_dim * sizeof(pixel));
 		bzero(next_buf, sizeof(pixel) * next_dim * next_dim);
@@ -283,8 +283,8 @@ int main(int argc, const char** argv) {
 		next_buf = NULL;
 		next_dim = 0;
 		printf("%d (%d)\n", iter, cur_dim);
-		display_buf(stdout, cur_buf, cur_dim);
-		printf("\n");
+		//display_buf(stdout, cur_buf, cur_dim);
+		//printf("\n");
 	}
 
  done_2:
@@ -295,7 +295,7 @@ int main(int argc, const char** argv) {
 			if (cur_buf[j + i * cur_dim]) num_on++;
 		}
 	}
-	printf("Part 1: %d\n", num_on);
+	printf("Part 2: %d\n", num_on);
 	
 	return 0;
 }
