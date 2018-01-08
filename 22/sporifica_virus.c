@@ -7,13 +7,25 @@
 #include <stdbool.h>
 #include <strings.h>
 #include <errno.h>
+#include <assert.h>
+
 
 #define max_input_dim 25
 #define max_output_dim 10 * 1024
+#define num_iterations 10000000
 
-typedef bool pixel;
-#define INFECTED ((pixel)true)
-#define CLEAN (!INFECTED)
+/*
+#define max_input_dim 3
+#define max_output_dim 100000
+#define num_iterations 10000000
+*/
+
+typedef enum {
+	Clean,
+	Weakened,
+	Infected,
+	Flagged
+} pixel;
 
 pixel input_buf[max_input_dim * max_input_dim];
 int input_dim = 0;
@@ -32,8 +44,8 @@ void parse_input(FILE* in) {
 		line[line_len - 1] = '\0';
 		for (int i = 0; i < max_input_dim; i++) {
 			char c = line[i];
-			if (c == '\0') input_buf[y_dim * max_input_dim + i] = false;
-			if (c == '#') input_buf[y_dim * max_input_dim + i] = true;
+			if (c == '\0') input_buf[y_dim * max_input_dim + i] = Clean;
+			if (c == '#') input_buf[y_dim * max_input_dim + i] = Infected;
 			if (i + 1 > x_dim) x_dim = i + 1;
 		}
 		y_dim++;
@@ -50,9 +62,25 @@ void display_buf(FILE* out, pixel* buf, int dim) {
 	for (int i = 0; i < dim; i++) {
 		for (int j = 0; j < dim; j++) {
 			pixel val = *buf++;
-			fputc(val?'#':'.', out);
+			char c;
+			switch(val) {
+			case Clean:
+				c = '.';
+				break;
+			case Weakened:
+				c = 'W';
+				break;
+			case Flagged:
+				c = 'F';
+				break;
+			case Infected:
+				c = '#';
+				break;
+			}
+			fputc(c, out);
 			fputc(' ', out);
 		}
+		
 		fputc('\n', out);
 	}
 }
@@ -85,13 +113,8 @@ int main(int argc, const char** argv) {
 
 	for (int i = 0; i < max_input_dim; i++) {
 		memcpy(output_buf + (max_output_dim  * (offset + i)) + offset ,
-					 input_buf + input_dim * i, input_dim);
+					 input_buf + input_dim * i, input_dim * sizeof(pixel));
 	}
-
-	//printf("\n");
-	//printf("Initital (with space):\n");
-	//display_buf(stdout, output_buf, max_output_dim);
-
 
 	/* Apply the rules */
 	int position[2] = {max_output_dim/2, max_output_dim/2};
@@ -100,44 +123,51 @@ int main(int argc, const char** argv) {
 	unsigned long count = 0;
 	unsigned long infections = 0;
 	
-	while (count < 10000) {
+	while (count < num_iterations) {
 		pixel c = output_buf[position[0] + position[1] * max_output_dim];
-		/*
-			If the current node is infected, it turns to its right.
-			Otherwise, it turns to its left.
-			(Turning is done in-place; the current node does not change.)
-		*/
-		if (c == INFECTED) {
-			int temp = velocity[1];
-			velocity[1] = velocity[0];
-			velocity[0] = -temp;
-		}
-		else {
-			int temp = velocity[1];
+
+		int temp;
+		pixel new;
+		switch (c) {
+		case Clean:
+			/* Clean turns left */
+			temp = velocity[1];
 			velocity[1] = -velocity[0];
 			velocity[0] = temp;
+			new = Weakened;
+			break;
+		case Weakened:
+			/* Weakened doesn't turn */
 			infections++;
+			new = Infected;
+			break;
+		case Flagged:
+			/* Flagged turns around */
+			velocity[0] *= -1;
+			velocity[1] *= -1;
+			new = Clean;
+			break;
+		case Infected:
+			/* Infected turns right */
+			temp = velocity[1];
+			velocity[1] = velocity[0];
+			velocity[0] = -temp;
+			new = Flagged;
+			break;
 		}
 
-		/*
-			If the current node is clean, it becomes infected. 
-			Otherwise, it becomes cleaned. 
-			(This is done after the node is considered for the purposes of changing 
-			direction.)
-		*/
-		if (c == INFECTED) {
-			output_buf[position[0] + position[1] * max_output_dim] = CLEAN;
-		}
-		else {
-			output_buf[position[0] + position[1] * max_output_dim] = INFECTED;
-		}
+		output_buf[position[0] + position[1] * max_output_dim] = new;
 		
-
 		/*
 			The virus carrier moves forward one node in the direction it is facing. 
 		*/
 		position[0] += velocity[0];
 		position[1] += velocity[1];
+
+		if (position[0] < 0 || position[0] >= max_output_dim ||
+				position[1] < 0 || position[1] >= max_output_dim) {
+			fprintf(stderr, "Out of bounds! %d, %d\n", position[0], position[1]);
+		}
 
 		count++;
 		//printf("\n%lu:\n", count);
